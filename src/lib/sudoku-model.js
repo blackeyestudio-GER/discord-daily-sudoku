@@ -353,69 +353,6 @@ export const modelHelpers = {
         }));
     },
 
-    fetchRecentlyShared: (grid, setGrid, fetchDelay) => {
-        const modalState = grid.get('modalState');
-        delete modalState.fetchRequired;    // Naughty, but we don't want a re-render
-        const setRecentlySharedData = data => {
-            setGrid(grid => {
-                const modalState = grid.get('modalState') || {};
-                if (modalState.modalType === MODAL_TYPE_WELCOME) {
-                    return grid.set('modalState', {
-                        modalType: MODAL_TYPE_WELCOME,
-                        recentlyShared: data,
-                        showRatings: modalState.showRatings,
-                        savedPuzzles: modalState.savedPuzzles,
-                        shortenLinks: modalState.shortenLinks,
-                    });
-                }
-                else {
-                    return grid;    // user has moved on, silently discard response
-                }
-            });
-        };
-        const fetchHandler = () => {
-            fetch('/recently-shared')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`${response.status} ${response.statusText}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    modelHelpers.saveCachedRecentlyShared(data);
-                    setRecentlySharedData(data);
-                })
-                .catch(error => setGrid(grid => {
-                    const modalState = grid.get('modalState') || {};
-                    if (modalState.modalType === MODAL_TYPE_WELCOME) {
-                        return grid.set('modalState', {
-                            modalType: MODAL_TYPE_WELCOME,
-                            loadingFailed: true,
-                            errorMessage: error.toString(),
-                            showRatings: modalState.showRatings,
-                            savedPuzzles: modalState.savedPuzzles,
-                            shortenLinks: modalState.shortenLinks,
-                        });
-                    }
-                    else {
-                        return grid;    // user has moved on, silently discard response
-                    }
-                }));
-        };
-        const cachedPuzzles = modelHelpers.loadCachedRecentlyShared();
-        if (cachedPuzzles && cachedPuzzles.data) {
-            const cacheAge = (Date.now() - cachedPuzzles.time) / 1000;
-            if (cacheAge < 3600) {
-                setRecentlySharedData(cachedPuzzles.data);
-                if (cacheAge < 60) {
-                    return;
-                }
-                fetchDelay = 1;
-            }
-        }
-        setTimeout(fetchHandler, fetchDelay);
-    },
-
     findDifficultyRating: (initialDigits) => {
         const cachedPuzzles = modelHelpers.loadCachedRecentlyShared();
         if (cachedPuzzles && cachedPuzzles.data) {

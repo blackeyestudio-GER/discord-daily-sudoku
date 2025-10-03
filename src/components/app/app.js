@@ -4,6 +4,7 @@ import {saveSvgAsPng} from 'save-svg-as-png';
 
 import { newSudokuModel, modelHelpers, SETTINGS } from '../../lib/sudoku-model.js';
 import useWindowSize from '../../lib/use-window-size.js';
+import { createProgressTracker, parseProgressParams } from '../../lib/progress-tracker.js';
 
 import SvgSprites from '../svg-sprites/svg-sprites';
 import StatusBar from '../status-bar/status-bar';
@@ -29,14 +30,23 @@ const inputModeFromHotKey = {
     v: 'color',
 }
 
-function initialGridFromURL () {
+function createInitialGrid(progressTracker) {
     const params = new URLSearchParams(window.location.search);
+    
     let grid = newSudokuModel({
         initialDigits: params.get('s'),
         difficultyLevel: params.get('d'),
         onPuzzleStateChange: grid => {
             document.body.dataset.currentSnapshot = grid.get('currentSnapshot');
             modelHelpers.persistPuzzleState(grid);
+            
+            if (progressTracker) {
+                progressTracker.onGridChange(grid);
+                
+                if (grid.get('solved')) {
+                    progressTracker.sendCompletionUpdate(grid);
+                }
+            }
         }
     });
 
@@ -484,7 +494,19 @@ function getDimensions(winSize) {
 }
 
 function App() {
-    const [grid, setGrid] = useState(initialGridFromURL);
+    const [progressTracker] = useState(() => {
+        const progressParams = parseProgressParams();
+        return createProgressTracker(
+            progressParams.sessionId,
+            progressParams.notifyUrl,
+            {
+                updateInterval: progressParams.updateInterval,
+                usePostMessage: progressParams.usePostMessage
+            }
+        );
+    });
+    
+    const [grid, setGrid] = useState(() => createInitialGrid(progressTracker));
     const settings = grid.get('settings');
     let showTimer = settings[SETTINGS.showTimer];
     const intervalStartTime = grid.get('intervalStartTime');
@@ -498,10 +520,7 @@ function App() {
     const modalState = grid.get('modalState');
     if (modalState) {
         if (modalState.fetchRequired) {
-            if (modalState.modalType === MODAL_TYPE_WELCOME) {
-                modelHelpers.fetchRecentlyShared(grid, setGrid, FETCH_DELAY);
-            }
-            else if (modalState.modalType === MODAL_TYPE_HINT) {
+            if (modalState.modalType === MODAL_TYPE_HINT) {
                 modelHelpers.fetchExplainPlan(grid, setGrid, RETRY_INTERVAL, MAX_RETRIES);
             }
         }
@@ -548,6 +567,17 @@ function App() {
             return () => window.removeEventListener('blur', visibilityHandler);
         },
         [setGrid] // This effect will essentially never be re-run
+    );
+
+    useEffect(
+        () => {
+            return () => {
+                if (progressTracker) {
+                    progressTracker.destroy();
+                }
+            };
+        },
+        [progressTracker]
     );
 
 
